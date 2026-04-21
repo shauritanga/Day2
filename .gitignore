@@ -1,0 +1,18 @@
+# Local build output
+target/
+**/target/
+
+# Local Maven repository used during training
+.m2/
+
+# Local logs
+logs/
+*.log
+
+# Instructor-only completed solutions.
+# Keep hospital-service visible because it is the worked example.
+# Keep setup visible because learners need database setup scripts.
+cmis-microservices/adjudication-service/
+cmis-microservices/claims-service/
+cmis-microservices/member-service/
+claims-refactor-instructor-solution.md

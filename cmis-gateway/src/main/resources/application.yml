@@ -1,0 +1,37 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: cmis-gateway
+
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+gateway:
+  routes:
+    # First extraction: hospital endpoints are served by the new service.
+    hospital-service-url: http://localhost:8081
+
+    # Everything not yet refactored remains on the monolith.
+    monolith-url: http://localhost:8090
+
+    # Instructor solution for the next exercise.
+    # The gateway does not use this until the claims route block is uncommented
+    # in GatewayProxyController.
+    claims-service-url: http://localhost:8083
+
+springdoc:
+  api-docs:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.zhsf.gateway: INFO

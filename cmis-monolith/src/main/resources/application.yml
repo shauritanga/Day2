@@ -1,0 +1,61 @@
+server:
+  # In the refactoring training setup, the API Gateway owns public port 8080.
+  # The monolith moves behind the gateway and still serves every endpoint that
+  # has not yet been extracted.
+  port: 8090
+
+spring:
+  application:
+    name: cmis-monolith
+
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cmis_db
+    username: cmis_user
+    password: cmis_pass
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      # Safe pool sizing: (2 * CPU_cores) + effective_spindle_count
+      # For a 4-core server: 10 is a reasonable default — tune with pg_stat_activity
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      pool-name: cmis-pool
+
+  jpa:
+    hibernate:
+      # CRITICAL: use 'validate' in production — Flyway manages the schema, NOT Hibernate
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 25
+        order_inserts: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    out-of-order: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    com.zhsf: INFO
+    org.springframework.web: WARN
