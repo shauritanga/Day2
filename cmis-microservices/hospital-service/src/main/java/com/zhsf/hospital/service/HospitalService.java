@@ -6,6 +6,7 @@ import com.zhsf.hospital.domain.Hospital;
 import com.zhsf.hospital.exception.BusinessException;
 import com.zhsf.hospital.exception.NotFoundException;
 import com.zhsf.hospital.repository.HospitalRepository;
+import com.zhsf.hospital.sync.HospitalSyncOutboxService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,9 +17,12 @@ import java.util.List;
 public class HospitalService {
 
     private final HospitalRepository hospitalRepository;
+    private final HospitalSyncOutboxService syncOutboxService;
 
-    public HospitalService(HospitalRepository hospitalRepository) {
+    public HospitalService(HospitalRepository hospitalRepository,
+                           HospitalSyncOutboxService syncOutboxService) {
         this.hospitalRepository = hospitalRepository;
+        this.syncOutboxService = syncOutboxService;
     }
 
     public List<HospitalResponse> findAll() {
@@ -43,6 +47,10 @@ public class HospitalService {
         h.setName(request.name());
         h.setRegion(request.region());
         h.setContactEmail(request.contactEmail().toLowerCase());
-        return HospitalResponse.from(hospitalRepository.save(h));
+        Hospital saved = hospitalRepository.save(h);
+        // Temporary migration sync: remove after all modules that depend on hospitals
+        // have been extracted from the monolith and no longer read cmis_db.hospitals.
+        syncOutboxService.queueHospitalSync(saved);
+        return HospitalResponse.from(saved);
     }
 }

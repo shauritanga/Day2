@@ -274,7 +274,9 @@ Hospital data can exist in two places:
 
 For this lesson, both databases start with the same hospital seed data.
 
-That allows you to test routing first before solving synchronization.
+That allows you to test routing clearly.
+
+This project also includes a simple synchronization mechanism so new hospital writes can be copied back to the monolith legacy database while claims are still not refactored.
 
 ## 10. Why Claims Still Work
 
@@ -306,7 +308,8 @@ During this stage:
 2. Hospital-service reads and writes `hospital_db`.
 3. Claims still run in the monolith.
 4. Claims still use `cmis_db`.
-5. The gateway hides this transition from the client.
+5. Hospital-service syncs a legacy copy back to `cmis_db`.
+6. The gateway hides this transition from the client.
 
 This is not the final architecture.
 
@@ -328,17 +331,29 @@ Client -> Gateway -> hospital-service -> hospital_db
 
 The new hospital is saved in `hospital_db`.
 
-It is not automatically saved in `cmis_db`.
+Hospital-service also writes a record to:
 
-That means claims in the monolith will not automatically see that new hospital.
+```text
+hospital_db.hospital_sync_outbox
+```
 
-This is the main data transition issue.
+A background worker sends that record to the monolith internal sync endpoint:
+
+```text
+POST http://localhost:8090/api/hospitals/internal/sync
+```
+
+The monolith updates its legacy hospital table in `cmis_db`.
+
+That means claims can continue using `cmis_db` until claims are refactored.
+
+This is eventual consistency. The legacy copy may update a few seconds after the hospital-service write.
 
 Later, you can solve it using:
 
 | Option | Meaning |
 | --- | --- |
-| Data synchronization | Hospital-service publishes updates and the monolith receives them |
+| Data synchronization | Hospital-service queues updates and the monolith receives them |
 | API lookup | Claims calls hospital-service when it needs hospital details |
 | Refactor claims next | Claims moves out of the monolith and integrates with hospital-service |
 | Temporary dual-write | Write to both databases during a short transition |
@@ -533,10 +548,9 @@ Remember this:
 6. `hospital-service` owns `hospital_db`.
 7. The monolith still owns `cmis_db`.
 8. Claims still work because claims have not moved yet.
-9. New hospital writes do not automatically appear in `cmis_db`.
-10. Later, we can refactor more modules or add synchronization.
+9. New hospital writes are synced back to `cmis_db` through the outbox worker.
+10. Later, we can refactor more modules and remove the legacy copy.
 
 The key lesson:
 
 > A good monolith refactor is not one big rewrite. It is a controlled sequence of small moves, with routing and data ownership handled carefully at each step.
-

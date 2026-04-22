@@ -152,9 +152,21 @@ Client -> Gateway -> hospital-service -> hospital_db
 
 The new hospital is saved in `hospital_db`.
 
-It is not automatically saved in `cmis_db`.
+In this project, hospital-service also writes a synchronization record into an outbox table:
 
-This is very important.
+```text
+hospital_db.hospital_sync_outbox
+```
+
+A background worker reads that outbox record and sends it to the monolith internal sync endpoint.
+
+That internal endpoint updates the legacy hospital copy in:
+
+```text
+cmis_db.hospitals
+```
+
+This is important because claims are still inside the monolith and still depend on `cmis_db`.
 
 ## 6. What Happens to Claims?
 
@@ -176,9 +188,11 @@ The claims module still reads from `cmis_db`.
 
 Therefore, claims can only see the hospital records that exist in the old monolith database.
 
-If you create a brand new hospital in `hospital_db`, claims will not automatically know about it.
+If you create a brand new hospital in `hospital_db`, claims should know about it after the sync worker pushes the change to `cmis_db`.
 
-That is not a coding error. That is the data consistency challenge we must solve during migration.
+That is eventual consistency.
+
+It means the new hospital may appear first in `hospital_db`, then shortly after in the monolith legacy database.
 
 ## 7. Why We Seed Both Databases in This Lesson
 
@@ -278,13 +292,25 @@ The new hospital is stored in:
 hospital_db.hospitals
 ```
 
-But the monolith database does not automatically receive it:
+Hospital-service also queues a sync record in:
+
+```text
+hospital_db.hospital_sync_outbox
+```
+
+Then the background sync worker sends the change to the monolith internal endpoint:
+
+```text
+POST http://localhost:8090/api/hospitals/internal/sync
+```
+
+The monolith updates its legacy copy:
 
 ```text
 cmis_db.hospitals
 ```
 
-So if the old claims module needs this new hospital, it will not find it unless we add another mechanism.
+So the old claims module can continue using `cmis_db` while the system is being refactored.
 
 ## 10. How Can We Solve That Later?
 
@@ -317,6 +343,19 @@ This is common in production microservices.
 It gives us eventual consistency.
 
 That means data may not update everywhere at the exact same millisecond, but it becomes consistent after the event is processed.
+
+This project implements a simple version of this idea using an outbox table and a background sync worker.
+
+The flow is:
+
+```text
+hospital-service saves hospital
+hospital-service writes outbox record
+sync worker sends record to monolith
+monolith updates cmis_db.hospitals
+```
+
+This is simpler than Kafka or CDC, but it teaches the same migration idea.
 
 ### Option 3: Let the monolith call hospital-service
 
@@ -409,10 +448,10 @@ Remember this:
 3. The monolith still owns `cmis_db`.
 4. Claims still use `cmis_db` because claims are not refactored yet.
 5. New hospital writes go to `hospital_db`.
-6. New hospital writes do not automatically appear in `cmis_db`.
-7. Later, we solve that with synchronization, service calls, or by refactoring claims.
+6. Hospital-service queues a sync record in `hospital_sync_outbox`.
+7. The sync worker updates the legacy hospital copy in `cmis_db`.
+8. Later, claims can be refactored so the legacy copy is no longer needed.
 
 The key lesson:
 
 > In microservice refactoring, moving the API is only half of the work. You must also plan how data ownership changes over time.
-

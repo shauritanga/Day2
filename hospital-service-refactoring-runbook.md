@@ -53,6 +53,14 @@ You need two databases:
 | `cmis_db` | `cmis-monolith` | Legacy monolith data |
 | `hospital_db` | `hospital-service` | New hospital service data |
 
+Hospital-service also creates an outbox table in `hospital_db`:
+
+```text
+hospital_sync_outbox
+```
+
+When a new hospital is created, hospital-service writes the hospital and an outbox sync record. A background worker pushes that record to the monolith so `cmis_db.hospitals` stays updated for legacy claims.
+
 The application user is:
 
 ```text
@@ -340,7 +348,46 @@ The script checks:
 
 If the script passes, your basic routing setup is correct.
 
-## 12. What the Test Results Mean
+## 12. Test Hospital Legacy Sync
+
+Create a hospital through the gateway:
+
+```powershell
+$body = @{
+  hospitalCode = "HOSP-ZNZ-020"
+  name = "Outbox Sync Demo Hospital"
+  region = "Mjini Magharibi"
+  contactEmail = "outbox-demo@example.com"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://localhost:8080/api/hospitals `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+The write goes to:
+
+```text
+hospital-service -> hospital_db
+```
+
+Then wait a few seconds for the sync worker.
+
+Check that the monolith legacy copy can also see it:
+
+```powershell
+Invoke-RestMethod http://localhost:8090/api/hospitals
+```
+
+Expected meaning:
+
+```text
+hospital-service owns the write, but cmis_db receives a temporary legacy copy for monolith claims.
+```
+
+## 13. What the Test Results Mean
 
 If hospital responses match:
 
@@ -368,7 +415,7 @@ Everything else stayed.
 The gateway decides where traffic goes.
 ```
 
-## 13. Common Errors and Fixes
+## 14. Common Errors and Fixes
 
 ### Gateway cannot call hospital-service
 
@@ -468,6 +515,39 @@ Fix:
 
 Create the missing database and grant ownership to `cmis_user`.
 
+### Hospital sync is not reaching the monolith
+
+Symptom:
+
+New hospital appears through:
+
+```text
+http://localhost:8080/api/hospitals
+```
+
+but does not appear in direct monolith data:
+
+```text
+http://localhost:8090/api/hospitals
+```
+
+Meaning:
+
+The outbox worker may not have synced yet, or the monolith may be down.
+
+Fix:
+
+1. Wait a few seconds.
+2. Confirm the monolith is running on port `8090`.
+3. Check hospital-service logs for sync warnings.
+4. Confirm this setting exists in hospital-service:
+
+```yaml
+legacy-sync:
+  enabled: true
+  monolith-base-url: http://localhost:8090
+```
+
 ### Maven command is wrong
 
 Wrong:
@@ -482,7 +562,7 @@ Correct:
 mvn -q -DskipTests package
 ```
 
-## 14. Review Questions
+## 15. Review Questions
 
 After completing the runbook, answer these:
 
@@ -494,9 +574,10 @@ After completing the runbook, answer these:
 | Which database does hospital-service use? |  |
 | Which database does the monolith use? |  |
 | Why does the monolith still have hospital data? |  |
-| What problem appears if a new hospital is added only to `hospital_db`? |  |
+| What table queues hospital sync records? |  |
+| Why is this called eventual consistency? |  |
 
-## 15. Final Check
+## 16. Final Check
 
 You have completed this runbook when you can show:
 
@@ -512,4 +593,3 @@ You have completed this runbook when you can show:
 The key lesson:
 
 > The Hospital API has moved, but the whole system still works because the gateway routes each request to the correct application.
-

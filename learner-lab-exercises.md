@@ -244,7 +244,7 @@ Answer:
 
 Expected understanding:
 
-The new hospital is stored by `hospital-service` in `hospital_db`.
+The new hospital is stored by `hospital-service` in `hospital_db`. Hospital-service also queues a sync record so the monolith can receive a temporary legacy copy.
 
 ## Lab 7: Understand the Database Transition
 
@@ -262,17 +262,28 @@ But claims still run inside the monolith and use:
 cmis_db
 ```
 
+This project uses an outbox sync worker to copy the new hospital into the monolith legacy database.
+
+The sync path is:
+
+```text
+hospital_db.hospitals
+hospital_db.hospital_sync_outbox
+cmis-monolith internal sync endpoint
+cmis_db.hospitals
+```
+
 Answer:
 
 | Question | Your answer |
 | --- | --- |
-| Will claims automatically see the new hospital? |  |
-| Why or why not? |  |
-| What could we add later to solve this? |  |
+| Will claims see the new hospital immediately or after sync? |  |
+| Which table queues the sync record? |  |
+| Why do we still want to refactor claims later? |  |
 
 Expected understanding:
 
-Claims will not automatically see a new hospital created only in `hospital_db`. To solve this later, we can add data synchronization, make claims call hospital-service, or refactor claims next.
+Claims can see the new hospital after the outbox worker syncs a legacy copy into `cmis_db`. This keeps the old monolith working while we gradually refactor more modules.
 
 ## Lab 8: Try the Internal Hospital Endpoint
 
@@ -412,4 +423,3 @@ At the end of this lab, you should be able to answer yes to each question:
 The most important idea in this lab is:
 
 > We can move one business capability out of the monolith while the rest of the monolith continues working. The gateway keeps the public API stable while the backend changes step by step.
-
